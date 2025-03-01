@@ -7,19 +7,31 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from PIL import Image
 
-# Note the updated paths for static and templates
-app = Flask(__name__, static_folder="../static", template_folder="../templates")
+# Check if we're on Vercel
+if os.environ.get("VERCEL"):
+    # Use /tmp for writable operations in serverless functions
+    static_folder = os.path.join(os.getcwd(), "static")
+    template_folder = os.path.join(os.getcwd(), "templates")
+    db_path = '/tmp/app.db'
+    upload_folder = '/tmp/uploads'
+else:
+    # Use local paths when running locally
+    static_folder = os.path.join(os.path.dirname(__file__), "..", "static")
+    template_folder = os.path.join(os.path.dirname(__file__), "..", "templates")
+    db_path = os.path.join(os.path.dirname(__file__), "..", "app.db")
+    upload_folder = os.path.join(os.path.dirname(__file__), "..", "static", "uploads")
+
+app = Flask(__name__, static_folder=static_folder, template_folder=template_folder)
 app.config['SECRET_KEY'] = 'your-secret-key'
-# Use an absolute path for SQLite so it finds the database file correctly
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(app.root_path, "..", "app.db")
-app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, "..", "static", "uploads")
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + db_path
+app.config['UPLOAD_FOLDER'] = upload_folder
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# User model
+# Models
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
@@ -32,12 +44,11 @@ class User(db.Model, UserMixin):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
-# Image model with custom_slug field
 class ImageModel(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(300), nullable=False)
     thumbnail = db.Column(db.String(300), nullable=True)
-    custom_slug = db.Column(db.String(100), unique=True, nullable=True)  # For custom URL
+    custom_slug = db.Column(db.String(100), unique=True, nullable=True)
     upload_date = db.Column(db.DateTime, default=datetime.utcnow)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
@@ -56,6 +67,14 @@ def create_thumbnail(image_path, thumbnail_path, size=(128, 128)):
     except Exception as e:
         print("Error creating thumbnail:", e)
 
+# Ensure database and uploads folder exist
+@app.before_first_request
+def initialize():
+    if not os.path.exists(app.config['UPLOAD_FOLDER']):
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    db.create_all()
+
+# Routes
 @app.route('/')
 def index():
     images = ImageModel.query.order_by(ImageModel.upload_date.desc()).all()
@@ -113,12 +132,10 @@ def upload():
             file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(file_path)
 
-            # Create thumbnail
             thumbnail_filename = "thumb_" + filename
             thumbnail_path = os.path.join(app.config['UPLOAD_FOLDER'], thumbnail_filename)
             create_thumbnail(file_path, thumbnail_path)
 
-            # Retrieve optional custom slug from form
             custom_slug = request.form.get('custom_slug')
             if custom_slug:
                 if ImageModel.query.filter_by(custom_slug=custom_slug).first():
@@ -151,11 +168,5 @@ def image_by_slug(custom_slug):
     image = ImageModel.query.filter_by(custom_slug=custom_slug).first_or_404()
     return send_from_directory(app.config['UPLOAD_FOLDER'], image.filename)
 
-# Create database and uploads folder if running locally
-if __name__ == '__main__':
-    with app.app_context():
-        if not os.path.exists(os.path.join(app.root_path, "..", "app.db")):
-            db.create_all()
-    if not os.path.exists(app.config['UPLOAD_FOLDER']):
-        os.makedirs(app.config['UPLOAD_FOLDER'])
-    app.run(debug=True)
+# Expose the WSGI app for Vercel
+app = app
