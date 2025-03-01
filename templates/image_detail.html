@@ -1,0 +1,21 @@
+<!-- In templates/image_detail.html -->
+{% extends "base.html" %}
+{% block content %}
+  <h1>Image Detail</h1>
+  <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="Full Image">
+  <p>Uploaded on: {{ image.upload_date.strftime("%Y-%m-%d %H:%M:%S") }}</p>
+  <p>Uploaded by: {{ image.uploader.username }}</p>
+  <p>
+    Direct Link:
+    {% if image.custom_slug %}
+      <a href="{{ url_for('image_by_slug', custom_slug=image.custom_slug, _external=True) }}">
+        {{ url_for('image_by_slug', custom_slug=image.custom_slug, _external=True) }}
+      </a>
+    {% else %}
+      <a href="{{ url_for('uploaded_file', filename=image.filename, _external=True) }}">
+        {{ url_for('uploaded_file', filename=image.filename, _external=True) }}
+      </a>
+    {% endif %}
+  </p>
+  <a href="{{ url_for('index') }}">Back to Gallery</a>
+{% endblock %}

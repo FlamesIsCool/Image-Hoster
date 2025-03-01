@@ -1,0 +1,13 @@
+<!-- In templates/upload.html -->
+{% extends "base.html" %}
+{% block content %}
+  <h1>Upload an Image</h1>
+  <form method="post" enctype="multipart/form-data">
+    <input type="file" name="image" required>
+    <br>
+    <label>Custom URL (optional):</label>
+    <input type="text" name="custom_slug" placeholder="Enter a custom slug (e.g. myimage)">
+    <br>
+    <button type="submit">Upload</button>
+  </form>
+{% endblock %}
